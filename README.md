@@ -48,6 +48,16 @@ Host ports (loopback only): Postgres `55432`, S3 `59000`, fake RunPod `58000`.
 Configuration comes from the environment; see [`.env.example`](.env.example). Never commit `.env`.
 This repository is public: no secrets, hostnames of private machines or credentials in commits.
 
+## CI/CD
+
+- `ci` (every push and pull request, GitHub-hosted): ruff, pytest, dev-stack smoke test.
+- `worker-image` (push to `main` or manual): builds `worker/Dockerfile` on the self-hosted runner and
+  pushes `ghcr.io/aaronx3011/runpod-render-worker:<git sha>`.
+- `runner-check` (manual): confirms the self-hosted runner works.
+
+Runner setup: copy `scripts/runner/` to the build machine and run `install-runner.sh` there (see its header).
+The self-hosted runner must never run pull request code; `job-guard.sh` refuses anything but `main`.
+
 ## Key rules
 
 - Jobs are idempotent on `(project, operation_id, params)`; the project comes from authentication.
