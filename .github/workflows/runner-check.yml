@@ -1,0 +1,20 @@
+# Manual check that the self-hosted runner picks up jobs and has room to build. Never triggered
+# by pull requests (see worker-image.yml).
+name: runner-check
+
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  check:
+    if: github.ref == 'refs/heads/main'
+    runs-on: [self-hosted, linux, x64, lesbian]
+    timeout-minutes: 5
+    steps:
+      - run: |
+          docker version --format 'docker {{.Server.Version}}'
+          docker buildx version
+          df -h "$(docker info --format '{{.DockerRootDir}}')"
+          docker system df
