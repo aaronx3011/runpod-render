@@ -36,7 +36,17 @@ docker compose -f devstack/compose.yaml run --rm smoke     # prints SMOKE OK
 docker compose -f devstack/compose.yaml down
 ```
 
-Host ports (loopback only): Postgres `55432`, S3 `59000`, fake RunPod `58000`.
+Host ports (loopback only): Postgres `55432`, S3 `59000`, fake RunPod `58000`, control API `58080`
+(override with `RR_PG_PORT`, `RR_S3_PORT`, `RR_RUNPOD_PORT`, `RR_API_PORT`).
+
+Control plane: see [`src/runpod_render/control/README.md`](src/runpod_render/control/README.md). With the
+stack up, `pip install -e ".[dev,control]"` and `pytest` also runs the control plane tests against it
+(they skip when Postgres/S3 are not reachable). Full stack including the real control plane:
+
+```bash
+docker compose -f devstack/compose.yaml --profile control up -d --build
+docker compose -f devstack/compose.yaml --profile control run --rm smoke-full   # prints SMOKE-FULL OK
+```
 
 ## Environments
 
@@ -47,6 +57,16 @@ Host ports (loopback only): Postgres `55432`, S3 `59000`, fake RunPod `58000`.
 
 Configuration comes from the environment; see [`.env.example`](.env.example). Never commit `.env`.
 This repository is public: no secrets, hostnames of private machines or credentials in commits.
+
+## CI/CD
+
+- `ci` (every push and pull request, GitHub-hosted): ruff, pytest, dev-stack smoke test.
+- `worker-image` (push to `main` or manual): builds `worker/Dockerfile` on the self-hosted runner and
+  pushes `ghcr.io/aaronx3011/runpod-render-worker:<git sha>`.
+- `runner-check` (manual): confirms the self-hosted runner works.
+
+Runner setup: copy `scripts/runner/` to the build machine and run `install-runner.sh` there (see its header).
+The self-hosted runner must never run pull request code; `job-guard.sh` refuses anything but `main`.
 
 ## Key rules
 

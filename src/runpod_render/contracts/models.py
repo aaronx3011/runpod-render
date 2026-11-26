@@ -202,3 +202,41 @@ class JobView(_Strict):
     attempts: int
     error: str | None = None
     timings: StageTimings | None = None
+    # Added in #489, optional.
+    stage: Stage | None = None
+    video_sha256: str | None = None
+    video_bytes: int | None = None
+
+
+# Added in #489 (backward compatible: new optional fields / new models only).
+
+
+class JobList(_Strict):
+    jobs: list[JobView]
+    next_cursor: str | None = None  # pass back as ?cursor= for the next page
+
+
+class CreateUploadRequest(_Strict):
+    """Reserve an Omni reference upload. The PUT body must hash to `sha256`."""
+
+    media_type: Literal["image", "video", "audio"]
+    sha256: Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
+    content_type: Annotated[str, Field(min_length=1, max_length=200)] = "application/octet-stream"
+
+
+class CreateUploadResponse(_Strict):
+    upload_id: str
+    put_url: str
+    # Headers the PUT must send exactly as given (they are part of the signature).
+    put_headers: dict[str, str]
+    expires_at: str
+    # The worker verifies the reference against this checksum and fails the job on mismatch.
+    sha256: str
+
+
+class DownloadResponse(_Strict):
+    url: str  # presigned GET of video.mp4
+    manifest_url: str
+    expires_at: str
+    video_sha256: str
+    video_bytes: int

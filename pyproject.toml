@@ -13,6 +13,9 @@ dependencies = [
   "httpx>=0.27",
 ]
 
+[project.scripts]
+rr-control = "runpod_render.control.cli:main"
+
 [project.optional-dependencies]
 # CPU control plane (API, scheduler, reconciler).
 control = [
