@@ -1,6 +1,10 @@
 # Local dev stack: Postgres, moto S3 (stand-in for R2), fake RunPod running the mock worker.
 #   docker compose -f devstack/compose.yaml up -d --build
 #   docker compose -f devstack/compose.yaml run --rm smoke
+# With the real control plane (API + scheduler, #489):
+#   docker compose -f devstack/compose.yaml --profile control up -d --build
+#   docker compose -f devstack/compose.yaml --profile control run --rm smoke-full
+# Host ports can be moved with RR_PG_PORT / RR_S3_PORT / RR_RUNPOD_PORT / RR_API_PORT.
 # Everything here uses throwaway dev credentials; real ones live only in your own .env.
 name: runpod-render-dev
 
@@ -17,6 +21,14 @@ x-dev-env: &dev-env
   RUNPOD_ENDPOINT_OMNI: fasth3-omni
   MODEL_REVISION: mock-rev
 
+x-control-env: &control-env
+  <<: *dev-env
+  DATABASE_URL: postgresql+psycopg://render:render-dev@postgres:5432/render
+  PUBLIC_BASE_URL: http://control-api:8080
+  RUNPOD_WEBHOOK_SECRET: dev-webhook-secret
+  MAX_ACTIVE_RENDERS: "7"
+  RECONCILE_INTERVAL_S: "5"
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -24,7 +36,7 @@ services:
       POSTGRES_USER: render
       POSTGRES_PASSWORD: render-dev
       POSTGRES_DB: render
-    ports: ["127.0.0.1:55432:5432"]
+    ports: ["127.0.0.1:${RR_PG_PORT:-55432}:5432"]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U render"]
       interval: 2s
@@ -35,7 +47,7 @@ services:
     image: motoserver/moto:latest
     environment:
       MOTO_PORT: "9000"
-    ports: ["127.0.0.1:59000:9000"]
+    ports: ["127.0.0.1:${RR_S3_PORT:-59000}:9000"]
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request;urllib.request.urlopen('http://localhost:9000/moto-api/')\""]
       interval: 2s
@@ -50,7 +62,7 @@ services:
       WORKER_HANDLER: runpod_render.worker.mock_handler:handler
       MOCK_RENDER_SECONDS: "0.5"
       FAKE_RUNPOD_MAX_WORKERS: "7"
-    ports: ["127.0.0.1:58000:8000"]
+    ports: ["127.0.0.1:${RR_RUNPOD_PORT:-58000}:8000"]
     depends_on:
       s3: {condition: service_healthy}
 
@@ -61,6 +73,40 @@ services:
       <<: *dev-env
     profiles: ["smoke"]
     depends_on: [fake-runpod]
+
+  control-migrate:
+    build: {context: .., dockerfile: devstack/Dockerfile}
+    command: ["sh", "-c", "python -m runpod_render.control migrate && python -m runpod_render.control ensure-bucket"]
+    environment: *control-env
+    profiles: ["control"]
+    depends_on:
+      postgres: {condition: service_healthy}
+      s3: {condition: service_healthy}
+
+  control-api:
+    build: {context: .., dockerfile: devstack/Dockerfile}
+    command: ["python", "-m", "runpod_render.control", "api", "--host", "0.0.0.0", "--port", "8080"]
+    environment: *control-env
+    ports: ["127.0.0.1:${RR_API_PORT:-58080}:8080"]
+    profiles: ["control"]
+    depends_on:
+      control-migrate: {condition: service_completed_successfully}
+
+  control-scheduler:
+    build: {context: .., dockerfile: devstack/Dockerfile}
+    command: ["python", "-m", "runpod_render.control", "scheduler"]
+    environment: *control-env
+    profiles: ["control"]
+    depends_on:
+      control-migrate: {condition: service_completed_successfully}
+      fake-runpod: {condition: service_started}
+
+  smoke-full:
+    build: {context: .., dockerfile: devstack/Dockerfile}
+    command: ["python", "-m", "runpod_render.devstack.smoke_full"]
+    environment: *control-env
+    profiles: ["control"]
+    depends_on: [control-api, control-scheduler]
 
 volumes:
   pgdata:
