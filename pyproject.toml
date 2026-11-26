@@ -1,0 +1,48 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "runpod-render"
+version = "0.1.0"
+description = "Modal-like batch video rendering for FastH3 on RunPod Serverless: control plane, worker, local dev stack."
+requires-python = ">=3.11"
+license = "Apache-2.0"
+dependencies = [
+  "pydantic>=2.7,<3",
+  "httpx>=0.27",
+]
+
+[project.optional-dependencies]
+# CPU control plane (API, scheduler, reconciler).
+control = [
+  "fastapi>=0.115",
+  "uvicorn[standard]>=0.30",
+  "sqlalchemy>=2.0",
+  "psycopg[binary]>=3.2",
+  "alembic>=1.13",
+  "boto3>=1.34",
+]
+# GPU worker on RunPod. FastVideo itself is installed by worker/Dockerfile, not from here.
+worker = [
+  "runpod>=1.7",
+]
+# Local fake RunPod + mock worker + tests.
+dev = [
+  "fastapi>=0.115",
+  "uvicorn[standard]>=0.30",
+  "boto3>=1.34",
+  "pytest>=8",
+  "ruff>=0.6",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/runpod_render"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 110
+target-version = "py311"

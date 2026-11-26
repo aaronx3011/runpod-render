@@ -1,0 +1,66 @@
+# Local dev stack: Postgres, moto S3 (stand-in for R2), fake RunPod running the mock worker.
+#   docker compose -f devstack/compose.yaml up -d --build
+#   docker compose -f devstack/compose.yaml run --rm smoke
+# Everything here uses throwaway dev credentials; real ones live only in your own .env.
+name: runpod-render-dev
+
+x-dev-env: &dev-env
+  ATTEMPT_TOKEN_SECRET: dev-only-secret
+  S3_ENDPOINT_URL: http://s3:9000
+  S3_BUCKET: runpod-render
+  S3_REGION: us-east-1
+  S3_ACCESS_KEY_ID: dev
+  S3_SECRET_ACCESS_KEY: dev-secret
+  RUNPOD_API_BASE: http://fake-runpod:8000
+  RUNPOD_API_KEY: dev-runpod-key
+  RUNPOD_ENDPOINT_T2V: fasth3-t2v
+  RUNPOD_ENDPOINT_OMNI: fasth3-omni
+  MODEL_REVISION: mock-rev
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: render
+      POSTGRES_PASSWORD: render-dev
+      POSTGRES_DB: render
+    ports: ["127.0.0.1:55432:5432"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U render"]
+      interval: 2s
+      retries: 30
+    volumes: [pgdata:/var/lib/postgresql/data]
+
+  s3:
+    image: motoserver/moto:latest
+    environment:
+      MOTO_PORT: "9000"
+    ports: ["127.0.0.1:59000:9000"]
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request;urllib.request.urlopen('http://localhost:9000/moto-api/')\""]
+      interval: 2s
+      retries: 30
+
+  fake-runpod:
+    build: {context: .., dockerfile: devstack/Dockerfile}
+    command: ["uvicorn", "runpod_render.devstack.fake_runpod:app_factory", "--factory",
+              "--host", "0.0.0.0", "--port", "8000"]
+    environment:
+      <<: *dev-env
+      WORKER_HANDLER: runpod_render.worker.mock_handler:handler
+      MOCK_RENDER_SECONDS: "0.5"
+      FAKE_RUNPOD_MAX_WORKERS: "7"
+    ports: ["127.0.0.1:58000:8000"]
+    depends_on:
+      s3: {condition: service_healthy}
+
+  smoke:
+    build: {context: .., dockerfile: devstack/Dockerfile}
+    command: ["python", "-m", "runpod_render.devstack.smoke"]
+    environment:
+      <<: *dev-env
+    profiles: ["smoke"]
+    depends_on: [fake-runpod]
+
+volumes:
+  pgdata:
