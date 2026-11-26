@@ -1,0 +1,9 @@
+.git
+.venv
+.worktrees
+**/__pycache__
+**/*.pyc
+.pytest_cache
+.ruff_cache
+devstack/data
+.env
